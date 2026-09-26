@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ ! -t 0 || ! -t 1 ]]; then
+    if command -v x-terminal-emulator >/dev/null 2>&1; then
+        exec x-terminal-emulator -e /bin/bash "$HERE/install.sh"
+    elif command -v gnome-terminal >/dev/null 2>&1; then
+        exec gnome-terminal -- /bin/bash "$HERE/install.sh"
+    fi
+fi
+
+exec /bin/bash "$HERE/install.sh"

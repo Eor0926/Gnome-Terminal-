@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Install Terminal+
+Comment=Install Terminal+ for this user
+Exec=/bin/bash -c "cd -- \\\"\\$(dirname -- \\\"\\$1\\\")\\\" && exec /bin/bash ./install.sh" bash %k
+Icon=system-software-install
+Terminal=true
+Type=Application
+Categories=Utility;
+StartupNotify=true

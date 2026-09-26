@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Uninstall Terminal+
+Comment=Remove Terminal+ and restore the previous terminal preference
+Exec=/bin/bash -c "cd -- \\\"\\$(dirname -- \\\"\\$1\\\")\\\" && exec /bin/bash ./uninstall.sh" bash %k
+Icon=edit-delete
+Terminal=true
+Type=Application
+Categories=Utility;
+StartupNotify=true
