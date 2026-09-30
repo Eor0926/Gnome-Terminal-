@@ -147,5 +147,3 @@ echo "Ctrl+Alt+T should now open Terminal+."
 if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
     nohup "$BIN" >/dev/null 2>&1 &
 fi
-
-[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]

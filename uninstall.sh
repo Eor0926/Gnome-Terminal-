@@ -51,5 +51,3 @@ fi
 
 echo
 echo "Terminal+ uninstalled."
-
-[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]

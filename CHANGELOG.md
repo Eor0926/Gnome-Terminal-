@@ -59,5 +59,3 @@
 - Added Cinnamon/default-terminal command execution compatibility.
 - Added persistent graphical uninstaller.
 - Added GNOME Terminal fallback launcher.
-
-[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
