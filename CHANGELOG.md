@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.2
+
+- Tightened permissions on existing command-button settings during upgrades, not only after the next settings save.
+- Made command-button removal target the matching label and command instead of a potentially stale menu index.
+
+
+## 1.2.1
+
+- Fixed the portable graphical Install/Uninstall `.desktop` launchers so they validate correctly and locate their sibling scripts without hard-coded user paths.
+- Made the installed graphical uninstaller independent of Terminal+ being functional as the current default terminal.
+- Removed the redundant `DO_NOT_REAP_CHILD` spawn flag that caused a VTE runtime warning; VTE adds it internally for `spawn_sync`.
+- Hardened persistent command-button settings permissions.
+- Improved synchronization between multiple already-open Terminal+ windows and reduced stale shared-button overwrites.
+
+
+## 1.2.0
+
+- Added a terminal right-click context menu.
+- Added per-window terminal background color selection; color is not persisted.
+- Added automatic light/dark text contrast after choosing a background color.
+- Added persistent custom command buttons after Reset and Copy All.
+- Added optional command-button labels and one-click command execution.
+- Command buttons are shared through `~/.config/terminal-plus/settings.json`.
+- Already-open Terminal+ windows monitor the shared settings and refresh their command buttons.
+- Added command-button removal from the terminal context menu and by right-clicking a command button.
+- Command-button labels are capped at 32 characters to keep the compact title bar usable.
+- Uninstall now removes the shared Terminal+ command-button settings.
+
+
 ## 1.1.2
 
 - Improved `.run` installer/uninstaller fallbacks so a graphical double-click opens a terminal window when needed.
@@ -30,3 +59,5 @@
 - Added Cinnamon/default-terminal command execution compatibility.
 - Added persistent graphical uninstaller.
 - Added GNOME Terminal fallback launcher.
+
+[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
