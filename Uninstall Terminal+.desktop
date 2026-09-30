@@ -1,9 +1,11 @@
 [Desktop Entry]
 Name=Uninstall Terminal+
 Comment=Remove Terminal+ and restore the previous terminal preference
-Exec=/bin/bash -c "cd -- \\\"\\$(dirname -- \\\"\\$1\\\")\\\" && exec /bin/bash ./uninstall.sh" bash %k
+Exec=/usr/bin/python3 -c "import os,subprocess,sys; subprocess.call(['/bin/bash', os.path.join(os.path.dirname(sys.argv[1]), 'Uninstall-TerminalPlus.run')])" %k
 Icon=edit-delete
-Terminal=true
+Terminal=false
 Type=Application
 Categories=Utility;
 StartupNotify=true
+
+[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
