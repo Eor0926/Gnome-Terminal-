@@ -1,4 +1,4 @@
-# Terminal+ 1.1.2
+# Terminal+ 1.2.2
 
 Terminal+ is a compact GTK3/VTE terminal for Linux Mint/Cinnamon.
 
@@ -18,6 +18,22 @@ Terminal+ is a compact GTK3/VTE terminal for Linux Mint/Cinnamon.
   - Up to 300,000 characters: copied normally to the clipboard
   - Over 300,000 characters: saved automatically as a `.txt` file on the Desktop
   - When a large log is saved to a file, the clipboard is cleared
+- Right-click terminal menu
+  - **Change Terminal Color...** changes only the current terminal window
+  - **Reset Terminal Color** restores the default dark background
+  - Bright backgrounds automatically switch to dark text for readability
+  - Terminal color is intentionally not persisted
+- Persistent command buttons
+  - Right-click the terminal and choose **Add Command Button...**
+  - Enter any one-line shell command and an optional button label
+  - The button appears directly after Reset and Copy All
+  - Clicking the button types the command into the terminal and presses Enter
+  - Command buttons are shared across Terminal+ windows and future launches
+  - Already-open Terminal+ windows refresh when the shared command-button settings change
+  - Right-click a command button to remove it
+  - Button labels are capped at 32 characters to keep the title bar usable
+  - Command buttons are stored in `~/.config/terminal-plus/settings.json`
+  - The settings directory/file are written with user-only permissions when Terminal+ saves them
 - Always on top by default
 - 100,000 lines of scrollback
 - Cinnamon/default-terminal command execution support (`-x`, `--execute`, `-e`)
@@ -86,6 +102,8 @@ Or run:
 ~/.local/share/terminal-plus/uninstall.sh
 ```
 
+Uninstalling also removes the saved command-button settings in `~/.config/terminal-plus/`.
+
 ## Pinning to the panel
 
 Search the Cinnamon menu for **Terminal+**, right-click it, and choose **Add to panel**.
@@ -111,3 +129,5 @@ git init
 git add .
 git commit -m "Initial Terminal+ release"
 ```
+
+[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
