@@ -6,6 +6,7 @@ gi.require_version("Vte", "2.91")
 
 from gi.repository import Gtk, Gdk, Gio, GLib, Vte
 
+import json
 import os
 import shlex
 import signal
@@ -19,6 +20,12 @@ APP_NAME = "Terminal+"
 # filling the clipboard. 300,000 characters is intentionally conservative
 # for pasting large terminal logs into chat/model input boxes.
 COPY_TO_FILE_CHAR_LIMIT = 300_000
+
+CONFIG_DIR = Path(GLib.get_user_config_dir()) / "terminal-plus"
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
+
+DEFAULT_BACKGROUND = "#202124"
+DEFAULT_FOREGROUND = "#F1F1F1"
 
 
 def parse_launch_args(argv):
@@ -87,6 +94,16 @@ class TerminalPlus(Gtk.Window):
         self.reset_cwd = initial_cwd or str(Path.home())
         self.initial_command = initial_command
 
+        # Color is intentionally per-window only and is never written to disk.
+        self.terminal_background = self.rgba_from_hex(DEFAULT_BACKGROUND)
+        self.terminal_foreground = self.rgba_from_hex(DEFAULT_FOREGROUND)
+
+        # Command buttons are shared/persistent across Terminal+ windows.
+        self.command_buttons = []
+        self.settings_monitor = None
+        self.settings_reload_source = None
+        self.load_shared_settings()
+
         # Per-window name only. Reset preserves it because Reset keeps this
         # window alive. Closing the window discards it.
         self.custom_name = initial_title or APP_NAME
@@ -107,6 +124,7 @@ class TerminalPlus(Gtk.Window):
 
         self.build_header()
         self.build_terminal()
+        self.start_settings_monitor()
 
         self.terminal.connect(
             "key-press-event",
@@ -160,6 +178,15 @@ class TerminalPlus(Gtk.Window):
         )
         self.copy_button.connect("clicked", self.on_copy_all_clicked)
         self.header.pack_start(self.copy_button)
+
+        # Persistent custom command buttons appear immediately to the right
+        # of Reset and Copy All.
+        self.command_button_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=0
+        )
+        self.header.pack_start(self.command_button_box)
+        self.rebuild_command_buttons()
 
         self.title_stack = Gtk.Stack()
         self.title_stack.set_size_request(-1, 22)
@@ -226,16 +253,13 @@ class TerminalPlus(Gtk.Window):
         self.terminal.set_mouse_autohide(True)
         self.terminal.set_cursor_shape(Vte.CursorShape.BLOCK)
 
-        background = Gdk.RGBA()
-        background.parse("#202124")
-
-        foreground = Gdk.RGBA()
-        foreground.parse("#F1F1F1")
-
-        self.terminal.set_color_background(background)
-        self.terminal.set_color_foreground(foreground)
+        self.apply_terminal_colors()
 
         self.terminal.connect("child-exited", self.on_child_exited)
+        self.terminal.connect(
+            "button-press-event",
+            self.on_terminal_button_press
+        )
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -257,7 +281,7 @@ class TerminalPlus(Gtk.Window):
                 cwd,
                 argv,
                 None,
-                GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+                GLib.SpawnFlags.DEFAULT,
                 None,
                 None,
                 None
@@ -276,6 +300,342 @@ class TerminalPlus(Gtk.Window):
     def spawn_shell(self, cwd=None):
         shell = os.environ.get("SHELL", "/bin/bash")
         self.spawn_process([shell], cwd)
+
+    # ---------------------------------------------------------
+    # Shared settings / command buttons
+    # ---------------------------------------------------------
+
+    @staticmethod
+    def rgba_from_hex(value):
+        rgba = Gdk.RGBA()
+        if not rgba.parse(value):
+            rgba.parse(DEFAULT_BACKGROUND)
+        return rgba
+
+    def load_shared_settings(self):
+        self.command_buttons = []
+
+        try:
+            if not SETTINGS_FILE.exists():
+                return
+
+            data = json.loads(
+                SETTINGS_FILE.read_text(encoding="utf-8")
+            )
+
+            raw_buttons = data.get("command_buttons", [])
+            if not isinstance(raw_buttons, list):
+                return
+
+            cleaned = []
+
+            for item in raw_buttons:
+                if not isinstance(item, dict):
+                    continue
+
+                command = str(item.get("command", "")).strip()
+                label = str(item.get("label", "")).strip()
+
+                if not command:
+                    continue
+
+                if not label:
+                    label = self.default_button_label(command)
+
+                cleaned.append({"label": label[:32], "command": command})
+
+            self.command_buttons = cleaned
+
+        except Exception as exc:
+            print("Could not load Terminal+ settings:", exc)
+
+    def save_shared_settings(self):
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            try:
+                CONFIG_DIR.chmod(0o700)
+            except OSError:
+                pass
+
+            payload = {"command_buttons": self.command_buttons}
+
+            temp_file = SETTINGS_FILE.with_suffix(".json.tmp")
+            temp_file.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                encoding="utf-8"
+            )
+            try:
+                temp_file.chmod(0o600)
+            except OSError:
+                pass
+            temp_file.replace(SETTINGS_FILE)
+
+        except Exception as exc:
+            print("Could not save Terminal+ settings:", exc)
+
+    def start_settings_monitor(self):
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            config_dir_file = Gio.File.new_for_path(str(CONFIG_DIR))
+            self.settings_monitor = config_dir_file.monitor_directory(
+                Gio.FileMonitorFlags.NONE,
+                None
+            )
+            self.settings_monitor.connect(
+                "changed",
+                self.on_settings_directory_changed
+            )
+        except Exception as exc:
+            print("Could not monitor Terminal+ settings:", exc)
+
+    def on_settings_directory_changed(self, _monitor, file_obj, other_file, _event_type):
+        changed_names = set()
+
+        for candidate in (file_obj, other_file):
+            try:
+                candidate_path = candidate.get_path() if candidate else None
+            except Exception:
+                candidate_path = None
+
+            if candidate_path:
+                changed_names.add(Path(candidate_path).name)
+
+        if SETTINGS_FILE.name not in changed_names:
+            return
+
+        if self.settings_reload_source is not None:
+            GLib.source_remove(self.settings_reload_source)
+
+        self.settings_reload_source = GLib.timeout_add(
+            150,
+            self.reload_shared_settings
+        )
+
+    def reload_shared_settings(self):
+        self.settings_reload_source = None
+        self.load_shared_settings()
+        if hasattr(self, "command_button_box"):
+            self.rebuild_command_buttons()
+        return False
+
+    @staticmethod
+    def default_button_label(command):
+        collapsed = " ".join(command.split())
+        if not collapsed:
+            return "Command"
+        if len(collapsed) <= 24:
+            return collapsed
+        return collapsed[:21] + "..."
+
+    def rebuild_command_buttons(self):
+        if not hasattr(self, "command_button_box"):
+            return
+
+        for child in self.command_button_box.get_children():
+            self.command_button_box.remove(child)
+            child.destroy()
+
+        for item in self.command_buttons:
+            label = item.get("label", "Command")
+            command = item.get("command", "")
+
+            button = Gtk.Button(label=label)
+            button.set_size_request(-1, 22)
+            button.set_tooltip_text(
+                f"{command}\nRight-click this button to remove it"
+            )
+            button.connect("clicked", self.on_command_button_clicked, command)
+            button.connect(
+                "button-press-event",
+                self.on_command_button_press,
+                label,
+                command
+            )
+            self.command_button_box.pack_start(button, False, False, 0)
+
+        self.command_button_box.show_all()
+
+    def on_command_button_clicked(self, _button, command):
+        if not command:
+            return
+        try:
+            self.terminal.feed_child((command + "\n").encode("utf-8"))
+            self.terminal.grab_focus()
+        except Exception as exc:
+            print("Could not run command button:", exc)
+
+    def on_command_button_press(self, _button, event, label, command):
+        if event.button != 3:
+            return False
+
+        menu = Gtk.Menu()
+        remove_item = Gtk.MenuItem(label="Remove Command Button")
+        remove_item.connect(
+            "activate",
+            self.remove_command_button,
+            label,
+            command
+        )
+        menu.append(remove_item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    def remove_command_button(self, _menu_item, label, command):
+        # Refresh from disk first so an older open window does not overwrite
+        # command buttons that were added from another Terminal+ window.
+        self.load_shared_settings()
+
+        for index, item in enumerate(self.command_buttons):
+            if (
+                item.get("label") == label
+                and item.get("command") == command
+            ):
+                del self.command_buttons[index]
+                self.save_shared_settings()
+                self.rebuild_command_buttons()
+                return
+
+    def add_command_button_dialog(self, _menu_item=None):
+        dialog = Gtk.Dialog(
+            title="Add Command Button",
+            transient_for=self,
+            modal=True
+        )
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Add", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+
+        content = dialog.get_content_area()
+        content.set_spacing(8)
+        content.set_border_width(12)
+
+        grid = Gtk.Grid()
+        grid.set_row_spacing(8)
+        grid.set_column_spacing(10)
+
+        label_label = Gtk.Label(label="Button label:")
+        label_label.set_halign(Gtk.Align.START)
+        label_entry = Gtk.Entry()
+        label_entry.set_placeholder_text("Optional — command text is used if blank")
+
+        command_label = Gtk.Label(label="Command:")
+        command_label.set_halign(Gtk.Align.START)
+        command_entry = Gtk.Entry()
+        command_entry.set_placeholder_text("Example: sudo apt update")
+        command_entry.set_activates_default(True)
+        command_entry.set_width_chars(50)
+
+        grid.attach(label_label, 0, 0, 1, 1)
+        grid.attach(label_entry, 1, 0, 1, 1)
+        grid.attach(command_label, 0, 1, 1, 1)
+        grid.attach(command_entry, 1, 1, 1, 1)
+        content.add(grid)
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            command = command_entry.get_text().strip()
+            label = label_entry.get_text().strip()
+            if command:
+                if not label:
+                    label = self.default_button_label(command)
+
+                # Pull in changes made by other open Terminal+ windows before
+                # appending this new shared button.
+                self.load_shared_settings()
+                self.command_buttons.append(
+                    {"label": label[:32], "command": command}
+                )
+                self.save_shared_settings()
+                self.rebuild_command_buttons()
+
+        dialog.destroy()
+        self.terminal.grab_focus()
+
+    # ---------------------------------------------------------
+    # Per-window terminal color
+    # ---------------------------------------------------------
+
+    def apply_terminal_colors(self):
+        self.terminal.set_color_background(self.terminal_background)
+        self.terminal.set_color_foreground(self.terminal_foreground)
+
+    def update_foreground_for_background(self):
+        bg = self.terminal_background
+        luminance = 0.2126 * bg.red + 0.7152 * bg.green + 0.0722 * bg.blue
+        if luminance > 0.58:
+            self.terminal_foreground = self.rgba_from_hex("#101010")
+        else:
+            self.terminal_foreground = self.rgba_from_hex(DEFAULT_FOREGROUND)
+
+    def choose_terminal_color(self, _menu_item=None):
+        dialog = Gtk.ColorChooserDialog(title="Terminal Color", parent=self)
+        dialog.set_rgba(self.terminal_background)
+        dialog.set_use_alpha(False)
+        response = dialog.run()
+
+        if response == Gtk.ResponseType.OK:
+            self.terminal_background = dialog.get_rgba()
+            self.terminal_background.alpha = 1.0
+            self.update_foreground_for_background()
+            self.apply_terminal_colors()
+
+        dialog.destroy()
+        self.terminal.grab_focus()
+
+    def reset_terminal_color(self, _menu_item=None):
+        self.terminal_background = self.rgba_from_hex(DEFAULT_BACKGROUND)
+        self.terminal_foreground = self.rgba_from_hex(DEFAULT_FOREGROUND)
+        self.apply_terminal_colors()
+        self.terminal.grab_focus()
+
+    # ---------------------------------------------------------
+    # Terminal right-click menu
+    # ---------------------------------------------------------
+
+    def on_terminal_button_press(self, _terminal, event):
+        if event.button != 3:
+            return False
+
+        menu = Gtk.Menu()
+
+        color_item = Gtk.MenuItem(label="Change Terminal Color...")
+        color_item.connect("activate", self.choose_terminal_color)
+        menu.append(color_item)
+
+        reset_color_item = Gtk.MenuItem(label="Reset Terminal Color")
+        reset_color_item.connect("activate", self.reset_terminal_color)
+        menu.append(reset_color_item)
+
+        menu.append(Gtk.SeparatorMenuItem())
+
+        add_command_item = Gtk.MenuItem(label="Add Command Button...")
+        add_command_item.connect("activate", self.add_command_button_dialog)
+        menu.append(add_command_item)
+
+        if self.command_buttons:
+            remove_menu = Gtk.Menu()
+            remove_parent = Gtk.MenuItem(label="Remove Command Button")
+
+            for item in self.command_buttons:
+                label = item.get("label", "Command")
+                command = item.get("command", "")
+                remove_item = Gtk.MenuItem(label=label)
+                remove_item.connect(
+                    "activate",
+                    self.remove_command_button,
+                    label,
+                    command
+                )
+                remove_menu.append(remove_item)
+
+            remove_parent.set_submenu(remove_menu)
+            menu.append(remove_parent)
+
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
 
     # ---------------------------------------------------------
     # Process tree handling
@@ -650,3 +1010,5 @@ if __name__ == "__main__":
         initial_title=launch_title
     )
     Gtk.main()
+
+[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
