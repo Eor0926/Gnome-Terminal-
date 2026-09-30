@@ -43,6 +43,7 @@ rm -f "$DESKTOP_DIR/terminal-plus.desktop"
 rm -f "$DESKTOP_DIR/terminal-plus-uninstall.desktop"
 rm -f "$DESKTOP_DIR/gnome-terminal-fallback.desktop"
 rm -rf "$APP_DIR"
+rm -rf "$HOME/.config/terminal-plus"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
@@ -50,3 +51,5 @@ fi
 
 echo
 echo "Terminal+ uninstalled."
+
+[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
