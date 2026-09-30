@@ -8,6 +8,8 @@ BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 BIN="$BIN_DIR/terminal-plus"
 STATE="$APP_DIR/install-state"
+CONFIG_DIR="$HOME/.config/terminal-plus"
+SETTINGS_FILE="$CONFIG_DIR/settings.json"
 
 echo "Installing $APP_NAME..."
 
@@ -39,6 +41,14 @@ else
 fi
 
 mkdir -p "$APP_DIR" "$BIN_DIR" "$DESKTOP_DIR"
+
+# Tighten permissions for command-button settings created by older releases.
+if [[ -d "$CONFIG_DIR" ]]; then
+    chmod 0700 "$CONFIG_DIR" 2>/dev/null || true
+fi
+if [[ -f "$SETTINGS_FILE" ]]; then
+    chmod 0600 "$SETTINGS_FILE" 2>/dev/null || true
+fi
 
 # Preserve the pre-install Cinnamon terminal choice. Reinstalls do not replace
 # this original backup.
@@ -99,9 +109,10 @@ cat > "$DESKTOP_DIR/terminal-plus-uninstall.desktop" <<EOF
 [Desktop Entry]
 Name=Uninstall Terminal+
 Comment=Remove Terminal+ and restore the previous terminal preference
-Exec="/bin/bash" "$APP_DIR/uninstall.sh"
+Exec=/usr/bin/x-terminal-emulator -e /bin/bash "$APP_DIR/uninstall.sh"
+TryExec=/usr/bin/x-terminal-emulator
 Icon=edit-delete
-Terminal=true
+Terminal=false
 Type=Application
 Categories=Utility;
 StartupNotify=true
@@ -136,3 +147,5 @@ echo "Ctrl+Alt+T should now open Terminal+."
 if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
     nohup "$BIN" >/dev/null 2>&1 &
 fi
+
+[executed on device: Eor-Computer (91ab0d1e-cc1b-440e-9d8f-d32b7879a54f)]
